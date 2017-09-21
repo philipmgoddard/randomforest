@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from queue import Queue
 from sklearn import datasets
 
 
@@ -20,6 +21,7 @@ class Node(object):
         self.split_value = split_value
         self.metric_score = metric_score
         self.class_counts = class_counts
+        self.pruned = False
 
 
 class Gini(object):
@@ -41,10 +43,7 @@ class Gini(object):
     # Gini = 0 means pure
     @staticmethod
     def score_improved(old_val, new_val):
-        if old_val is None:
-            return True
-        else:
-            return old_val > new_val
+        return old_val > new_val
 
 
 class Tree(object):
@@ -86,8 +85,9 @@ class Tree(object):
                 self.nodes[i].left_child_ix = LC
                 self.nodes[i].right_child_ix = RC
 
-        if prune:
-            self.__prune()
+        # if prune:
+        #     print('hello?')
+        #     self.__prune()
 
         self.is_grown = True
 
@@ -105,11 +105,12 @@ class Tree(object):
             grp = df.loc[:, target].values
             metric_score = self.metric(grp, grp)
             self.nodes.append(Node(index = self.node_index_counter, depth = depth,
-                                   metric_score = None, split_feature = None,
+                                   metric_score = metric_score, split_feature = None,
                                    split_value = None, is_leaf = True,
                                    parent=parent, direction = direction,
                                    class_counts = class_counts,
                                    left_child_ix = None, right_child_ix = None))
+
             self.node_index_counter +=1
             return
 
@@ -119,6 +120,9 @@ class Tree(object):
         split_feature = None
         split_value = None
         split = False
+        first_pass = True
+
+        #print( self.node_index_counter, class_counts)
 
         for f in features:
             # order the candidates (np.unique sorts and removes duplicates)
@@ -126,6 +130,7 @@ class Tree(object):
 
             # if only one value, cannot split
             if splits.shape[0] == 1:
+                #print('this bit', splits)
                 continue
 
             for s in splits[:-1]: # all but last, as left split is <=
@@ -133,27 +138,39 @@ class Tree(object):
                 gt_grp = df[df[f] > s].loc[:, target].values
 
                 # if split leads to a too small sample
-                if ((le_grp.shape[0] < self.min_grp_size) or (gt_grp.shape[0] < self.min_grp_size)):
-                    continue
+                # if ((le_grp.shape[0] < self.min_grp_size) or (gt_grp.shape[0] < self.min_grp_size)):
+                #     continue
 
                 tmp_metric_score = self.metric(le_grp, gt_grp)
+                if first_pass is True:
+                    first_pass = False
+                    metric_score = tmp_metric_score
+                    continue
 
+
+                #print('HATS',self.node_index_counter, metric_score, tmp_metric_score, self.metric.score_improved(metric_score, tmp_metric_score))
                 # did we improve on best?
                 if self.metric.score_improved(metric_score, tmp_metric_score):
+                    #print('HERE', self.node_index_counter)
                     split = True
                     is_leaf = False
                     metric_score = tmp_metric_score
                     split_feature = f
                     split_value = s
 
+
+
         if not split:
             # its a leaf, whats the purity of the leaf?
             grp = df.loc[:, target].values
             metric_score = self.metric(grp, grp)
 
+        #print(self.node_index_counter, split, is_leaf, metric_score)
+
+
         self.nodes.append(Node(index = self.node_index_counter, depth = depth,
                                metric_score = metric_score, split_feature = split_feature,
-                               split_value = split_value,is_leaf = is_leaf,
+                               split_value = split_value, is_leaf = is_leaf,
                                parent = parent, direction = direction,
                                class_counts = class_counts,
                                left_child_ix = None, right_child_ix = None))
@@ -176,13 +193,92 @@ class Tree(object):
 
 
     def __prune(self):
-        # VERY simple pruning scheme- only criteria is that purity is not improved
-        # between child and parent
-        # build queue of leaves
-        # process
-        # if prune, add parent to back of queue
-        # once queue empty, break
-        pass
+        '''
+        VERY simple pruning scheme- only criteria is that if leaf is pure and parent is
+        also pure, then prune. This could of course be caught in the tree growing process,
+        but leave in here as an example of how to modifiy for other criteria/pruning schemes
+
+        between child and parent
+        build queue of leaves
+        process
+        if prune, add parent to back of queue
+        once queue empty, break
+        '''
+
+        # q = Queue()
+        # for node in self.nodes:
+        #     if node.is_leaf:
+        #         print(node.index)
+        #         q.put(node.index)
+        # print()
+
+        # while q.qsize():
+        #     curr_node_ix = q.get()
+        #     print(curr_node_ix)
+        #     if curr_node_ix == 0: continue # cant prune the root
+        #     print(self.nodes[curr_node_ix].index,self.nodes[curr_node_ix].parent, self.nodes[curr_node_ix].metric_score )
+        #     curr_parent_ix = self.nodes[curr_node_ix].parent
+        #     if self.nodes[curr_node_ix].metric_score == 0.0:
+        #         if self.nodes[curr_parent_ix].metric_score == 0.0:
+        #             #self.nodes[curr_node_ix] = None
+        #             self.nodes[curr_parent_ix].pruned = True
+        #             q.put(self.nodes[curr_parent_ix].index)
+
+
+        # CAN DO BETTER THAN THIS:
+        # start again from leaves
+        # what is purity accross all leaves
+        # if removal doesnt change, prune leaf, add new leaf to queue
+
+        # q = Queue()
+        # for node in self.nodes:
+        #     if node.is_leaf:
+        #         print('leaf', node.index)
+        #         q.put(node.index)
+
+        # while q.qsize():
+
+        #     metric_score_old = 0.
+        #     for node in self.nodes:
+        #         if node is not None:
+        #             if node.is_leaf:
+        #                 print(node.metric_score)
+        #                 metric_score_old += node.metric_score
+        #                 q.put(node.index)
+
+        #     print('current score', metric_score_old)
+
+        #     curr_node_ix = q.get()
+        #     print('current_index', curr_node_ix)
+        #     if curr_node_ix == 0: continue # cant prune the root
+
+        #     #print(self.nodes[curr_node_ix].index,self.nodes[curr_node_ix].parent, self.nodes[curr_node_ix].metric_score )
+        #     print()
+        #     print('cni', curr_node_ix)
+        #     print(self.nodes[curr_node_ix])
+        #     curr_parent_ix = self.nodes[curr_node_ix].parent
+        #     print('hmm', curr_parent_ix)
+
+        #     metric_score_new = 0.
+        #     for node in self.nodes:
+        #         if node is not None:
+        #             if node.index == curr_node_ix: continue
+        #             if node.is_leaf:
+        #                 print(node.metric_score)
+        #                 metric_score_new += node.metric_score
+
+        #     print('metric_score_new', metric_score_new)
+
+        #     # check if nothing changes- prune!
+        #     if metric_score_old == metric_score_new:
+        #         print('pruning!', curr_node_ix)
+        #         self.nodes[curr_parent_ix].is_leaf = True
+        #         self.nodes[curr_node_ix] = None
+
+        #     print()
+
+
+
 
 
     def predict(self, feature_dict, predict_proba = False):
@@ -230,6 +326,7 @@ class Tree(object):
         for node in self.nodes:
             print()
             if node.is_leaf:
+                if node.pruned: continue
                 rule = []
                 rule.append(['class:' + str(node.class_counts.argmax())])
                 print('LEAF', node.class_counts)
@@ -243,8 +340,8 @@ class Tree(object):
                     split_feature = self.nodes[tmp_parent].split_feature
                     split_value = self.nodes[tmp_parent].split_value
                     rule.append([ split_feature + direction + str(split_value)])
-
                     tmp_node = self.nodes[tmp_parent]
+
                 rule = rule[::-1]
                 rules.append(rule)
 
@@ -349,4 +446,100 @@ rpart.predict(tst)
 # rf.grow_trees(df = iris_df, features = ['pl','pw','sl','sw'], target = 'species')
 
 
+# [[x.index, x.parent, x.metric_score, x.is_leaf] for x in rpart.nodes]
+
+for node in rpart.nodes:
+    print(node.index, node.left_child_ix, node.right_child_ix, node.is_leaf, node.metric_score, node.class_counts, node.parent, node.pruned)
+
+# leaf_metric_score = 0.
+# for node in rpart.nodes:
+#     if node.is_leaf:
+#         print(node.metric_score)
+#         leaf_metric_score += node.metric_score
+
+# print(leaf_metric_score)
+
 # TODO: plot decision boundaries, make sure is sensible
+
+
+
+# rpart = Tree(max_depth = 4, min_grp_size = 10, metric = Gini())
+# rpart.grow_tree(df = iris_df, features = ['pl','pw','sl','sw'], target = 'species')
+
+
+q = Queue()
+for node in rpart.nodes:
+    if node.is_leaf:
+        print('leaf', node.index)
+        q.put(node.index)
+
+while q.qsize():
+#
+    metric_score_old = 0.
+    for node in rpart.nodes:
+        if not node.pruned:
+            if node.is_leaf:
+                metric_score_old += node.metric_score
+#
+    print('current score', metric_score_old)
+#
+    curr_node_ix = q.get()
+    print('current_index', curr_node_ix)
+    if curr_node_ix == 0: continue # cant prune the root
+#
+    #print(self.nodes[curr_node_ix].index,self.nodes[curr_node_ix].parent, self.nodes[curr_node_ix].metric_score )
+    print('cni', curr_node_ix)
+    curr_parent_ix = rpart.nodes[curr_node_ix].parent
+    print('cnp', curr_parent_ix)
+#
+    metric_score_new = 0.
+    for node in rpart.nodes:
+        if not node.pruned:
+            if node.index == curr_node_ix: continue
+            if node.is_leaf:
+                print(node.metric_score)
+                metric_score_new += node.metric_score
+#
+    print('metric_score_new', metric_score_new)
+#
+
+    # RATHER THAN MAKE PARENT LEAF, REMOVE l/r CHILD INDEX
+    # RMEOVE PRUNED NODES PARENT
+    # MARK PRUNED NODE AS 'PRUNED'
+    # IF PARENT NODE DOEST HAVE LEFT AND RIGHT CHILDREN, THEN AND ONLY THEN IS
+    # IT A LEAF
+    # check if nothing changes- prune!
+
+    # CANNOT USE GINI! IF PURE NODE, SCORE OF 0
+    # NEED TO USE ACCURACY OF ENTIRE TREE I THINK!!
+
+    # OR: FOR EACH LEAF, CONSIDER PARENT.
+    # IF PARENT BECOMES LEAF, WHAT IS ACCURACY?
+
+    if metric_score_old == metric_score_new:
+        print('pruning!', curr_node_ix)
+        q.put(curr_parent_ix)
+
+        rpart.nodes[curr_node_ix].pruned = True
+
+        if rpart.nodes[curr_node_ix].direction == 'L':
+            rpart.nodes[curr_parent_ix].left_child_ix = None
+        else:
+            rpart.nodes[curr_parent_ix].right_child_ix = None
+
+        if (rpart.nodes[curr_parent_ix].left_child_ix is None) & (rpart.nodes[curr_parent_ix].right_child_ix is None):
+            rpart.nodes[curr_parent_ix].is_leaf = True
+
+    #
+    for node in rpart.nodes:
+        if not node.pruned:
+            print(node.index, node.left_child_ix, node.right_child_ix, node.is_leaf, node.metric_score, node.class_counts, node.parent, node.pruned)
+    #
+    #
+    print()
+
+
+
+for node in rpart.nodes:
+    if node is not None:
+        print(node.index, node.left_child_ix, node.right_child_ix, node.is_leaf, node.metric_score, node.class_counts, node.parent, node.pruned)
