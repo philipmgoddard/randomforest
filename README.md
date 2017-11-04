@@ -1,3 +1,3 @@
 # Random Forest demo
 
-how a random forest works. simple python example
+This demo of a python random forest implementation accompanies [this]() blog post.
