@@ -51,7 +51,7 @@ class Gini(object):
         when smaller!
         '''
         return new_val < old_val
-    
+
     @staticmethod
     def should_prune(parent_val, children_val):
         '''
@@ -113,13 +113,13 @@ class Tree(object):
         Grow the tree using a recursive partitioning approach.
         Child indices will be added after recursion is finished
         '''
-        
+
         # population proportions at each node
         class_counts = np.bincount(df[target].values, minlength = self.n_cls)
         # what is the purity of the current node?
         grp = df.loc[:, target].values
         metric_score = self.metric(grp, grp)
-        
+
         # hold onto dict of Node parameters
         node_args = {'index' : self.node_index_counter,
                      'depth' : depth,
@@ -160,7 +160,7 @@ class Tree(object):
             # between points to give some interpolation
             for i in range((len(splits) - 1)):
                 s_val = np.mean(splits[i:i+2])
-                le_grp = df.loc[df[f] <= s_val, target].values 
+                le_grp = df.loc[df[f] <= s_val, target].values
                 gt_grp = df.loc[df[f] > s_val, target].values
 
                 # what is purity with this split?
@@ -174,11 +174,11 @@ class Tree(object):
                     split_feature = f
                     split_value = s_val
 
-        node_args.update({'is_leaf' : is_leaf, 
+        node_args.update({'is_leaf' : is_leaf,
                           'metric_score' : metric_score,
                           'split_feature' : split_feature,
                           'split_value' : split_value})
-        
+
         self.nodes.append(Node(node_args))
 
         if not split:
@@ -273,7 +273,7 @@ class Tree(object):
                 curr_node = self.nodes[curr_node].right_child_ix
 
 
-                
+
 class RandomForest(object):
 
     def __init__(self, ntrees, max_depth, mtry, metric):
@@ -299,12 +299,13 @@ class RandomForest(object):
 
         # Growing forest is an obvious candidate for parallel processing
         for i in range(self.ntrees):
-            
-            # bootstrap sample of data
+
+            # create bootstrap sample of data
+            # we train on those 'in bag'
+            # in principle we could use 'out of bag' for validation
+            # but we don't do that here
             df_ix = df.index.values
             bag_ix = np.random.choice(df_ix, size = df_ix.shape[0], replace = True)
-            # not actually using this atm, could in principle keep hold 
-            # of out of bag performance
             oob_ix = np.setdiff1d(df_ix, np.unique(bag_ix))
 
             # randomly select mtry features
@@ -313,9 +314,9 @@ class RandomForest(object):
 
             # initialise tree
             tree = Tree(max_depth = self.max_depth,
-                        metric = self.metric
-                        )
-            # grow unpruned tree CHECK THIS- SHOULD THIS BE ILOC OR LOC
+                        metric = self.metric)
+
+            # grow unpruned tree
             tree.grow_tree(df.loc[bag_ix, :], curr_features, target, prune=False)
 
             # add tree to forest
@@ -353,7 +354,7 @@ class RandomForest(object):
             if (votes[votes.argmax()] / self.ntrees) > 0.5:
                 return votes.argmax()
             else:
-                return self.n_cls 
+                return self.n_cls
         else:
             return votes.argmax()
-            
+
